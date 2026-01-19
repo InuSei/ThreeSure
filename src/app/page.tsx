@@ -6,7 +6,7 @@ import { ref, onValue, query, limitToLast, remove } from "firebase/database";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ShieldCheck, ShieldAlert, Clock, Trash2, Fingerprint, Activity } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Clock, Trash2, Fingerprint, Activity, MapPin } from "lucide-react"; // <--- ADDED MapPin
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -17,7 +17,7 @@ interface ThreeSureLog {
   message: string;
   vaultId: string;
   fingerprintId?: string;
-  rawStatus?: string;
+  location?: string; // <--- This allows TS to know location exists
   timestamp: number;
 }
 
@@ -38,7 +38,6 @@ const LogCard = ({ log, onDelete }: { log: ThreeSureLog, onDelete: (id: string) 
     borderColor = "border-l-orange-500";
     Icon = ShieldAlert;
   } else if (log.type === 'CRITICAL_ALERT') {
-    // THEFT / VIBRATION MODE
     bgColor = "bg-red-600 text-white animate-pulse"; 
     borderColor = "border-l-red-900";
     Icon = ShieldAlert;
@@ -68,15 +67,27 @@ const LogCard = ({ log, onDelete }: { log: ThreeSureLog, onDelete: (id: string) 
           <p className="text-sm text-muted-foreground">{log.message}</p>
           
           {/* Metadata Chips */}
-          <div className="flex gap-2 mt-2">
+          <div className="flex flex-wrap gap-2 mt-2">
+            
+            {/* ID CHIP */}
             {log.fingerprintId && (
                 <span className="text-xs bg-secondary px-2 py-1 rounded flex items-center gap-1">
                     <Fingerprint size={12}/> ID: {log.fingerprintId}
                 </span>
             )}
+            
+            {/* VAULT CHIP */}
             <span className="text-xs bg-secondary px-2 py-1 rounded">
                 Vault: {log.vaultId}
             </span>
+
+            {/* LOCATION CHIP (The Missing Piece!) */}
+            {log.location && (
+                <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-1 rounded flex items-center gap-1">
+                    <MapPin size={12}/> {log.location}
+                </span>
+            )}
+
           </div>
         </div>
 
@@ -100,10 +111,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   
-  // FIX: Use a Ref to track the last ID we saw. This prevents the "Cannot update while rendering" error.
   const lastLogIdRef = useRef<string | null>(null);
 
-  // 1. LISTEN TO FIREBASE (Data Fetching Only)
   useEffect(() => {
     const notificationsRef = ref(database, 'notifications');
     const recentQuery = query(notificationsRef, limitToLast(50));
@@ -116,9 +125,9 @@ export default function Home() {
             id: key,
             ...data[key]
           }))
-          .sort((a, b) => b.timestamp - a.timestamp); // Newest first
+          .sort((a, b) => b.timestamp - a.timestamp); 
 
-        setLogs(list); // Just update the list, NO TOASTS HERE
+        setLogs(list);
       } else {
         setLogs([]);
       }
@@ -128,23 +137,18 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // 2. WATCH FOR NEW LOGS (Side Effects / Toasts Only)
   useEffect(() => {
     if (logs.length === 0) return;
-
     const latestLog = logs[0];
 
-    // If this is the very first load, just memorize the ID and don't pop up notifications
     if (lastLogIdRef.current === null) {
         lastLogIdRef.current = latestLog.id;
         return;
     }
 
-    // If the latest ID is DIFFERENT from what we last saw, it's a NEW event!
     if (latestLog.id !== lastLogIdRef.current) {
-        lastLogIdRef.current = latestLog.id; // Update our tracker
+        lastLogIdRef.current = latestLog.id; 
 
-        // Now we can safely trigger the toast
         if (latestLog.type === 'CRITICAL_ALERT') {
             toast({
                 title: "🚨 SECURITY BREACH DETECTED",
@@ -165,7 +169,7 @@ export default function Home() {
             });
         }
     }
-  }, [logs, toast]); // This effect runs safely AFTER the render is finished
+  }, [logs, toast]); 
 
   const handleDelete = (id: string) => {
     remove(ref(database, `notifications/${id}`));
